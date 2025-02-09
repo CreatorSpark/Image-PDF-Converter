@@ -4,12 +4,22 @@ from ttkthemes import ThemedTk
 from PIL import Image, ImageTk
 import os
 from pdf2image import convert_from_path
+import requests
+from packaging import version
+from threading import Thread
 
 class ImagePDFConverter:
     def __init__(self, master):
         self.master = master
         self.master.title("Image-PDF Converter By CreatorSpark")
         self.master.geometry("900x600")     
+        
+        # Add version and update URL constants
+        self.VERSION = "1.0.0"
+        self.GITHUB_USERNAME = "CreatorSpark"
+        self.REPO_NAME = "Image-PDF-Converter"
+        self.UPDATE_URL = f"https://github.com/{self.GITHUB_USERNAME}/{self.REPO_NAME}/releases/latest"
+        self.API_URL = f"https://api.github.com/repos/{self.GITHUB_USERNAME}/{self.REPO_NAME}/releases/latest"
         
         self.master.grid_columnconfigure(0, weight=3)
         self.master.grid_columnconfigure(1, weight=1)
@@ -20,6 +30,10 @@ class ImagePDFConverter:
         self.conversion_type = tk.StringVar(value="jpg_to_pdf")
         self.quality = tk.IntVar(value=85)
         self.dragging_index = None
+        
+        # Add compression settings
+        self.compression_level = tk.IntVar(value=85)  # Default compression level
+        self.target_dpi = tk.IntVar(value=300)  # Default DPI
         
         # Set theme colors
         self.colors = {
@@ -35,7 +49,55 @@ class ImagePDFConverter:
         
         self.create_widgets()
         self.enable_drag_and_drop()
+        self.check_for_updates() 
         
+    def check_for_updates(self):
+        """Check for updates from GitHub repository."""
+        try:
+            def check_update_thread():
+                try:
+                    headers = {'Accept': 'application/vnd.github.v3+json'}
+                    response = requests.get(self.API_URL, headers=headers, timeout=5)
+                    
+                    if response.status_code == 200:
+                        latest_version = response.json()['tag_name'].lstrip('v')
+                        
+                        if version.parse(latest_version) > version.parse(self.VERSION):
+                            # Schedule the update dialog on the main thread
+                            self.master.after(0, self.show_update_dialog, latest_version)
+                except Exception as e:
+                    print(f"Update check failed: {str(e)}")
+
+            # Run update check in background thread
+            Thread(target=check_update_thread, daemon=True).start()
+
+        except ImportError:
+            # Handle case where requests or packaging is not available
+            print("Update checker dependencies not available")
+
+    def show_update_dialog(self, latest_version):
+        """Show update dialog and handle user response."""
+        update_msg = (
+            f"A new version ({latest_version}) is available!\n\n"
+            f"Current version: {self.VERSION}\n"
+            "Would you like to download it?"
+        )
+        
+        if messagebox.askyesno("Update Available", update_msg):
+            import webbrowser
+            webbrowser.open(self.UPDATE_URL)
+            
+            # Show instructions for updating
+            instruction_msg = (
+                "To update:\n\n"
+                "1. Download the new version from the opened webpage\n"
+                "2. Close this application\n"
+                "3. Install the new version\n"
+                "\nWould you like to close the application now?"
+            )
+            if messagebox.askyesno("Update Instructions", instruction_msg):
+                self.master.quit()
+
     def create_widgets(self):
         """Create UI components with enhanced styling."""
         # Configure styles first
@@ -147,6 +209,48 @@ class ImagePDFConverter:
                  textvariable=self.quality,
                  font=("Helvetica", 11)).grid(row=0, column=2, padx=5)
 
+        # Add Compression Control Frame
+        compression_frame = ttk.LabelFrame(self.master, text="PDF Compression Settings", padding=10)
+        compression_frame.grid(row=3, column=0, columnspan=3, padx=20, pady=10, sticky="ew")
+
+        # Compression Level Control
+        ttk.Label(compression_frame, 
+                 text="Compression Level:",
+                 font=("Helvetica", 11)).grid(row=0, column=0, padx=5)
+        
+        compression_slider = ttk.Scale(compression_frame,
+                                     from_=1,
+                                     to=100,
+                                     variable=self.compression_level,
+                                     orient="horizontal")
+        compression_slider.grid(row=0, column=1, padx=5, sticky="ew")
+        
+        compression_label = ttk.Label(compression_frame,
+                                    textvariable=self.compression_level,
+                                    font=("Helvetica", 11))
+        compression_label.grid(row=0, column=2, padx=5)
+
+        # DPI Control
+        ttk.Label(compression_frame, 
+                 text="DPI:",
+                 font=("Helvetica", 11)).grid(row=1, column=0, padx=5)
+        
+        dpi_values = [72, 150, 200, 300, 600]
+        dpi_combobox = ttk.Combobox(compression_frame, 
+                                   values=dpi_values,
+                                   textvariable=self.target_dpi,
+                                   width=10,
+                                   state="readonly")
+        dpi_combobox.grid(row=1, column=1, padx=5, sticky="w")
+        dpi_combobox.set(300)  # Default DPI
+
+        # Compression info label
+        compression_info = ttk.Label(compression_frame,
+                                   text="Lower compression = larger file size, better quality\n"
+                                        "Higher compression = smaller file size, lower quality",
+                                   font=("Helvetica", 9, "italic"))
+        compression_info.grid(row=2, column=0, columnspan=3, pady=5)
+
         # Convert Button with enhanced styling
         convert_btn = ttk.Button(self.master,
                                text="Convert Files",
@@ -162,13 +266,26 @@ class ImagePDFConverter:
                                   anchor="w")
         self.status_bar.grid(row=5, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
-        # GitHub link with icon
+        # Modified GitHub frame with version and update button
         github_frame = ttk.Frame(self.master)
         github_frame.grid(row=5, column=2, sticky="e", padx=5, pady=5)
         
-        github_icon = "🔗"  # Unicode icon as a simple solution
+        # Add update check button
+        update_btn = ttk.Button(github_frame,
+                              text="Check for Updates",
+                              command=self.check_for_updates,
+                              style='Custom.TButton')
+        update_btn.pack(side="right", padx=5)
+        
+        # Version label
+        version_label = ttk.Label(github_frame,
+                              text=f"v{self.VERSION}",
+                              font=("Helvetica", 10))
+        version_label.pack(side="right", padx=5)
+        
+        github_icon = "🔗"
         github_link = ttk.Label(github_frame,
-                              text=f"{github_icon} github.com/CreatorSpark",
+                              text=f"{github_icon} github.com/{self.GITHUB_USERNAME}/{self.REPO_NAME}",
                               font=("Helvetica", 10),
                               cursor="hand2")
         github_link.pack(side="right")
@@ -360,7 +477,7 @@ class ImagePDFConverter:
             self.pdf_to_jpg()
 
     def jpg_to_pdf(self):
-        """Convert JPG files to a single PDF with compression and A4 size standardization."""
+        """Convert JPG files to a single PDF with enhanced compression options."""
         if not any(file.lower().endswith(('.jpg', '.jpeg')) for file in self.file_paths):
             messagebox.showerror("Error", "No JPG files selected")
             return
@@ -373,19 +490,40 @@ class ImagePDFConverter:
             from PIL import Image
             import io
 
-            # A4 size in pixels at 300 DPI
-            A4_WIDTH_PX = int(8.27 * 300)  # 8.27 inches * 300 DPI
-            A4_HEIGHT_PX = int(11.69 * 300)  # 11.69 inches * 300 DPI
+            # Calculate target dimensions based on DPI
+            dpi = self.target_dpi.get()
+            A4_WIDTH_IN = 8.27
+            A4_HEIGHT_IN = 11.69
+            A4_WIDTH_PX = int(A4_WIDTH_IN * dpi)
+            A4_HEIGHT_PX = int(A4_HEIGHT_IN * dpi)
 
             # Create a list to store compressed images
             compressed_images = []
             
-            # Process each image
-            for image_path in self.file_paths:
+            # Show progress bar
+            progress_window = tk.Toplevel(self.master)
+            progress_window.title("Converting...")
+            progress_window.geometry("300x150")
+            progress_window.transient(self.master)
+            
+            progress_label = ttk.Label(progress_window, text="Processing images...")
+            progress_label.pack(pady=10)
+            
+            progress_bar = ttk.Progressbar(progress_window, length=200, mode='determinate')
+            progress_bar.pack(pady=10)
+            
+            total_files = len(self.file_paths)
+            
+            for index, image_path in enumerate(self.file_paths):
                 if not image_path.lower().endswith(('.jpg', '.jpeg')):
                     continue
                 
-                # Open image
+                # Update progress
+                progress_bar['value'] = (index + 1) / total_files * 100
+                progress_label['text'] = f"Processing image {index + 1} of {total_files}"
+                progress_window.update()
+                
+                # Open and process image
                 with Image.open(image_path) as img:
                     # Convert to RGB if necessary
                     if img.mode != 'RGB':
@@ -403,6 +541,7 @@ class ImagePDFConverter:
                         new_height = A4_HEIGHT_PX
                         new_width = int(A4_HEIGHT_PX * img_aspect)
                     
+                    # Use high-quality Lanczos resampling
                     resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                     
                     # Create new A4 canvas
@@ -417,18 +556,26 @@ class ImagePDFConverter:
                     img_buffer = io.BytesIO()
                     
                     # Save with compression
-                    a4_canvas.save(img_buffer, format='JPEG', quality=90, optimize=True)
+                    a4_canvas.save(img_buffer, 
+                                 format='JPEG', 
+                                 quality=self.compression_level.get(),
+                                 optimize=True,
+                                 dpi=(dpi, dpi))
                     img_buffer.seek(0)
                     compressed_images.append(img_buffer)
 
             # Convert compressed images to PDF
             from img2pdf import convert
             with open(output_path, "wb") as f:
-                f.write(convert([img.getvalue() for img in compressed_images]))
+                f.write(convert([img.getvalue() for img in compressed_images],
+                              dpi=dpi))
 
             # Clean up
             for buffer in compressed_images:
                 buffer.close()
+            
+            # Close progress window
+            progress_window.destroy()
 
             messagebox.showinfo("Success", "PDF created successfully!")
             self.status_bar.config(text="Conversion completed successfully")

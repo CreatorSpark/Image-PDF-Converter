@@ -26,9 +26,23 @@ def build_app():
         '--onefile',
         f'--icon={icon_file}',
         '--noconsole',
-        '--add-data=src/icon.png;src',  
+        '--add-data=src/icon.png;src',
+        # Add required hidden imports
         '--hidden-import=PIL._tkinter_finder',
         '--hidden-import=ttkthemes',
+        '--hidden-import=requests',
+        '--hidden-import=packaging',
+        '--hidden-import=packaging.version',
+        '--hidden-import=packaging.specifiers',
+        '--hidden-import=packaging.requirements',
+        '--hidden-import=packaging.utils',
+        # Add SSL certificates for requests
+        '--collect-data=certifi',
+        # Clean build
+        '--clean',
+        # Optimize
+        '--strip',
+        '--noupx',
     ]
 
     # Run PyInstaller
